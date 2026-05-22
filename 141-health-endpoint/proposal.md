@@ -95,3 +95,77 @@ A new service (e.g. `HealthChecker`) will be introduced to periodically check th
 
 # New Implications
 I do not see (out of the box) negative implications of this change, rather it would improve the overall reliability and operability of Concourse in production environments.
+
+# Implementation plan
+Looking into the change I think as it is quite large topic, to enable easier review and lower the risk, enabling an incremental validation flow, I propose spliting the subject into 5 problems/issues each addressing ~2-4 files and ~100-300 lines of changes:
+- __PR 1__: Foundation (DTOs + route constants)
+- __PR 2__: Core Health Logic (health server)
+- __PR 3__: HTTP Integration (routing/auth)
+- __PR 4__: Configuration (CLI flags)
+- __PR 5__: Client Library (go-concourse)
+
+## Implementation Dependencies
+- PR 1 → PR 2 (DTOs needed for health logic)
+- PR 2 → PR 3 (health logic needed for HTTP integration)  
+- PR 1 → PR 5 (DTOs needed for client, but independent of PR 2-4)
+- PR 3 → PR 4 (HTTP endpoint needed to test configuration)
+
+## Implementation Alternative
+Single Large PR on rough estimations (~12 files, 600+ lines)
+**Pros**: All-at-once integration, single review cycle
+**Cons**: Large review burden, harder to spot issues, riskier deployment
+
+### Very high level of PR subtasks
+#### PR 1: Foundation (Small, Low Risk) 
+**Goal**: Establish basic structure and data types
+**Files**: 2-3 files, ~150 lines total
+- [ ] Create `atc/health.go` with DTOs only
+- [ ] Add route constant to `atc/routes.go` 
+- [ ] Basic unit tests for DTOs (JSON marshaling/unmarshaling)
+
+**Review Focus**: Data structure design, JSON schema validation
+**Risk**: Very low - no runtime changes, just type definitions
+
+#### PR 2: Core Health Logic (Medium, Isolated)
+**Goal**: Implement health server with minimal wiring
+**Files**: 3-4 files, ~300 lines total  
+- [ ] Create `atc/api/healthserver/` package (server.go + health.go)
+- [ ] Implement health check logic (DB ping, component/worker aggregation)
+- [ ] Unit tests for health logic with mocked dependencies
+- [ ] Basic integration test setup
+
+**Review Focus**: Health logic correctness, error handling, performance
+**Risk**: Medium - new logic but isolated, not yet exposed via HTTP
+
+#### PR 3: HTTP Integration (Small, Focused)
+**Goal**: Wire health endpoint into existing HTTP stack  
+**Files**: 2-3 files, ~100 lines total
+- [ ] Wire healthserver in `atc/api/handler.go`
+- [ ] Add to unauthenticated routes in `atc/wrappa/api_auth_wrappa.go`
+- [ ] Integration tests for HTTP endpoint
+- [ ] Manual testing instructions
+
+**Review Focus**: HTTP routing, authentication bypass, API consistency
+**Risk**: Medium - touches core routing but follows existing patterns
+
+#### PR 4: Configuration (Small, Straightforward)
+**Goal**: Add CLI flags and make thresholds configurable
+**Files**: 1-2 files, ~50 lines total
+- [ ] Add flags to `atc/atccmd/command.go` 
+- [ ] Wire configuration through to healthserver
+- [ ] Update integration tests with custom config scenarios
+- [ ] Documentation updates
+
+**Review Focus**: CLI interface design, default values, backward compatibility  
+**Risk**: Low - additive configuration changes only
+
+#### PR 5: Client Library (Small, Independent)
+**Goal**: Add go-concourse client support
+**Files**: 2-3 files, ~150 lines total
+- [ ] Implement `go-concourse/concourse/health.go`
+- [ ] Add `Health()` method to Client interface in `client.go`
+- [ ] Client tests with ghttp mocking
+- [ ] Usage examples
+
+**Review Focus**: API client design, test coverage, documentation
+**Risk**: Very low - client library changes don't affect server
